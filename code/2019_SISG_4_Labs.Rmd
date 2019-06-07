@@ -1,0 +1,315 @@
+---
+title: "Module 4: Regression Methods - Concepts and Applications"
+output:
+  html_document:
+    toc: false 
+    depth: 3 
+    theme: paper 
+    highlight: tango
+---
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 400)
+```  
+
+***
+
+#### Introduction
+
+The goal of these lab exercises is to use the cholesterol data set to explore relationships among the variables.  The cholesterol data set is available for download from the module Github repository and contains the following variables:
+
+<blockquote style="font-size:12px">
+ID:  Subject ID
+
+sex:  Sex:  0 = male, 1 = female
+
+
+age:  Age in years
+
+chol:  Serum total cholesterol, mg/dl
+
+BMI:  Body-mass index, kg/m2 
+
+TG:  Serum triglycerides, mg/dl
+
+APOE:  Apolipoprotein E genotype, with six genotypes coded 1-6:  1 = e2/e2, 2 = e2/e3, 
+3 = e2/e4, 4 = e3/e3, 5 = e3/e4, 6 = e4/e4
+
+rs174548:  Candidate SNP 1 genotype, chromosome 11, physical position 61,327,924.  Coded as the number of minor alleles:  0 = C/C, 1 = C/G, 2 = G/G.
+
+rs4775401:  Candidate SNP 2 genotype, chromosome 15, physical position 59,476,915.  Coded as the number of minor alleles: 0 = C/C, 1 = C/T, 2 = T/T.
+
+HTN:  diagnosed hypertension:  0 = no, 1 = yes
+
+chd:  diagnosis of coronary heart disease:  0 = no, 1 = yes
+
+</blockquote>
+
+You can download the data file and read it into R as follows:
+```{r, eval = FALSE}
+cholesterol = read.csv("https://raw.githubusercontent.com/rhubb/SISG2019/master/data/SISG-Data-cholesterol.csv", head=T)
+```
+
+***
+```{r, echo = FALSE}
+cholesterol = read.csv("https://raw.githubusercontent.com/rhubb/SISG2019/master/data/SISG-Data-cholesterol.csv", head=T)
+attach(cholesterol)
+```
+#### Install R packages
+- For these labs you will need the _gee_, _multcomp_ and _lmtest_ packages.
+- If you have not already, install these packages first. You will then need to load the package each time you execute your R script.
+```{r, eval=FALSE}
+install.packages("gee")
+install.packages("multcomp")
+install.packages("lmtest")
+library(gee)
+library(multcomp)
+library(lmtest)
+```
+```{r, eval=TRUE, message = FALSE, echo = FALSE}
+library(gee)
+library(multcomp)
+library(lmtest)
+```
+
+### Exercises
+We will first explore the data set using descriptive statistics and use simiple linear regression to investigate bivariate associations. The objective of this initial analysis is to explore the relationship between triglycerides and BMI.
+
+1\. Use plots and descriptive statistics to explore the variables triglycerides and BMI individually as well as their relationship to each other. Based on your graphical summaries does there appear to be an association between triglycerides and BMI?
+```{r, eval = TRUE, echo = TRUE}
+summary(TG)
+summary(BMI)
+group = 1*(BMI > 25)
+group=factor(group,levels=c(0,1), labels=c("<=25",">25"))
+table(group)
+by(TG, group, mean)
+by(TG, group, sd)
+hist(TG)
+hist(BMI)
+boxplot(TG~group,ylab="Triglycerides (mg/dl)")
+plot(TG ~ BMI, xlab = "BMI (kg/m2)", ylab = "Triglycerides (mg/dl)")
+```
+
+2\. Use linear regression to investigate the association between triglycerides and BMI.  What do the linear regression model results tell you about the association? Make sure you can interpret the model coefficients and any hypothesis testing.
+```{r, eval = TRUE, echo = TRUE}
+fit1 = lm(TG ~ BMI)
+summary(fit1)
+```
+
+3\. Compute a prediction for the mean value of triglycerides at BMI = 23 as well as for a new individual with BMI = 23. How do these two intervals differ and why?
+```{r, eval = TRUE, echo = TRUE}
+predict(fit1, newdata = data.frame(BMI = 23), interval = "confidence")
+predict(fit1, newdata = data.frame(BMI = 23), interval = "prediction")
+```
+
+4\. What is the $R^2$ value for the regression of triglycerides on BMI? What does this value tell you about the relationship between these two variables?
+```{r, eval = TRUE, echo = TRUE}
+fit1 = lm(TG ~ BMI)
+summary(fit1)$r.squared
+```
+
+5\.	Based on a scatterplot of triglycerides versus BMI, are there any points that you suspect might have a large influence on the regression estimates? Compare linear regression results with and without the possibly influential points. Does it appear that these points had much influence on your results?
+```{r, eval = TRUE, echo = TRUE}
+# Scatterplot of triglycerides vs BMI
+plot(TG ~ BMI, xlab = "BMI (kg/m2)", ylab = "Triglycerides (mg/dl)")
+
+# Identify observations with BMI <=37
+bmi37 = which(BMI<=37)
+
+# Consider again the regression of TG on BMI
+fit1=lm(TG~BMI)
+summary(fit1)
+
+# excluding subjects with BMI > 37
+fit2 = lm(TG[bmi37] ~ BMI[bmi37])
+summary(fit2)
+```
+
+6\.	Conduct a residuals analysis (using all data) to check the linear regression model assumptions.  Do any modeling assumptions appear to be violated?  How do model results change if you use robust standard errors?
+```{r, eval = TRUE, echo = TRUE}
+# Plot residuals vs fitted values
+plot(fit1$fitted, fit1$residuals,xlab="Fitted values",ylab="Residuals")
+abline(0,0)
+
+# Quantile-quantile plot
+qqnorm(fit1$residuals)
+qqline(fit1$residuals)
+
+# Deletion diagnostics
+dfb=dfbeta(fit1)
+index=order(abs(dfb[,2]),decreasing=T)
+cbind(dfb[index[1:15],],BMI[index[1:15]],TG[index[1:15]])
+
+# fit a linear regression model with robust standard errors
+fit.gee = gee(TG ~ BMI, id = seq(1,length(TG)))
+summary(fit.gee)
+
+# calculate p-values for robust regression
+z = abs(fit.gee$coef/sqrt(diag(fit.gee$robust)))
+2*(1-pnorm(z))
+```
+
+7\.	Summarize the variable APOE. Create a new binary variable indicating presence of the APOE e4 allele (APOE = 3, 5, or 6). Investigate the association between triglycerides and BMI adjusting for presence of the APOE e4 allele. What do the linear regression model results tell you about the adjusted association? Make sure you can interpret the model coefficients and any hypothesis testing.
+```{r, eval = TRUE, echo = TRUE}
+# Summarize the variable APOE
+table_APOE=table(APOE)
+table_APOE
+prop.table(table_APOE)
+
+# binary variable indicating presence of APOE4
+APOE4 = ifelse(APOE %in% c(3,5,6), 1, 0)
+
+## Linear regression analyses for association of APOE4 and BMI with TG  ----------
+# multiple linear regression of triglycerides on BMI and APOE4
+fit3=lm(TG~BMI+APOE4)
+summary(fit3)
+```
+
+8\. Plot separate scatterplots for triglycerides vs BMI for subjects in the two groups defined by presence of the APOE e4 allele.  Do these plots suggest effect modification? Fit a linear regression model that investigates whether the association between triglycerides and BMI is modified by the APOE4 allele. Is there evidence of effect modification? Make sure that you can interpret the regression coefficients from this model as well as any hypothesis tests.
+```{r, eval = TRUE, echo = TRUE}
+# scatterplot with subjects stratified by APOE4
+par(mfrow = c(1,1))
+plot(BMI[APOE4 == 0], TG[APOE4 == 0], pch = 1, col=75,xlab = "BMI (kg/m2)", ylab = "Triglycerides (mg/dl)")
+points(BMI[APOE4 == 1], TG[APOE4 == 1], pch = 1, col=34)
+
+# multiple linear regression of triglycerides on BMI, APOE4, and interaction
+fit4 = lm(TG ~ BMI*APOE4)
+summary(fit4)
+
+# Compare the models with and without interaction
+anova(fit3,fit4)
+
+# Compare with the model without APOE4
+anova(fit1,fit4)
+```
+***
+Next we will investigate the association between a set of categorical predictors and a continuous outcome. For these exercises, we will study the relationship between several genotypes included in the data set and total cholesterol level.
+
+9\.	Perform a descriptive analysis to explore the variables for total cholesterol and rs4775401 as well as the relationship between them using numeric and graphical methods.
+```{r, eval = TRUE, echo = TRUE}
+# descriptive statistics
+summary(chol)
+table(rs4775401)
+hist(chol)
+
+# graphical display: boxplot 
+boxplot(chol ~ factor(rs4775401))
+
+# numeric descriptives 
+tapply(chol, factor(rs4775401), mean)
+tapply(chol, factor(rs4775401), sd)
+```
+
+10\.	Conduct an analysis of differences in mean cholesterol levels across genotype groups defined by rs4775401. Is there evidence that mean cholesterol levels differ across genotypes?  Compare results obtained using classical ANOVA to those based on ANOVA allowing for unequal variances, using robust standard errors, and using a nonparametric test. How do your results differ? Which approach do you prefer and why? 
+```{r, eval = TRUE, echo = TRUE}
+# ANOVA for cholesterol and rs4775401
+fit1 = lm(chol ~ factor(rs4775401))
+summary(fit1)
+anova(fit1)
+
+# One-way ANOVA (not assuming equal variances)
+oneway.test(chol ~ factor(rs4775401))
+
+# Using robust standard errors
+summary(gee(chol ~ factor(rs4775401), id=seq(1,length(chol))))
+
+# Non-parametric ANOVA
+kruskal.test(chol ~ factor(rs4775401))
+
+```
+
+11\. Carry out all pairwise comparisons between rs4775401 genotypes and cholesterol using an adjustment method of your choice to address the issue of multiple comparisons. What do you conclude about differences in cholesterol between the genotypes?
+```{r, eval = TRUE, echo = TRUE}
+# construct contrasts for all pairwise comparisons
+M2 = contrMat(table(rs4775401), type="Tukey")
+fit2 = lm(chol ~ -1 + factor(rs4775401))
+
+# explore options to correct for multiple comparisons
+mc2 = glht(fit2, linfct =M2)
+summary(mc2, test=adjusted("none"))
+summary(mc2, test=adjusted("bonferroni"))
+summary(mc2, test=adjusted("hochberg"))
+summary(mc2, test=adjusted("fdr"))
+```
+
+12\.	Perform a descriptive analysis to investigate the relationships between cholesterol, APOE and rs174548. Use ANOVA to investigate the association between cholesterol, APOE and rs174548, with and without an interaction between APOE and rs174548. Is there evidence of an interaction between APOE and rs174548?
+```{r, eval = TRUE, echo = TRUE}
+# exploratory data analysis
+table(rs174548, APOE)
+tapply(chol, list(factor(rs174548), factor(APOE)), mean)
+tapply(chol, list(factor(rs174548), factor(APOE)), sd)
+
+par(mfrow = c(1,1))
+plot.design(chol ~ factor(rs174548) + factor(APOE))
+
+# model with interaction
+fit1 = lm(chol ~ factor(rs174548)*factor(APOE))
+summary(fit1)
+ 
+# model without interaction
+fit2 = lm(chol ~ factor(rs174548) + factor(APOE))
+summary(fit2)
+
+# compare models with and without interaction
+anova(fit2,fit1)
+```
+***
+For the final set of exercises we will study the relationship between genotype, clinical characteristics, and the binary outcome hypertension
+
+13\.	Is there an association between rs174548 and hypertension? Analyze this relationship using descriptive statistics as well as a logistic regression analysis. 
+```{r, eval = TRUE, echo = TRUE}
+# Descriptive statistics for hypertension
+table(HTN)
+table(HTN,rs174548)
+chisq.test(HTN,rs174548)
+by(TG,HTN,mean)
+
+# Logistic regression analysis for the association between rs174548 and hypertension
+glm.mod1 <- glm(HTN ~ factor(rs174548), family = "binomial")
+summary(glm.mod1)
+exp(glm.mod1$coef)
+exp(confint(glm.mod1))
+
+```
+
+14\.	Use logistic regression to investigate the association between triglycerides and hypertension. What can you conclude about the relationship based on these results? Make sure that you can interpret the model coefficients and hypothesis testing.
+```{r, eval = TRUE, echo = TRUE}
+# Logistic regression analysis for the association between triglycerides and hypertension
+glm.mod2 <- glm(HTN ~ TG, family = "binomial")
+summary(glm.mod2)
+exp(glm.mod2$coef)
+exp(confint(glm.mod2))
+```
+
+15\.	Analyze the association between hypertension and rs174548 adjusted for triglycerides using logistic regression. What does this model tell you about the association between rs174548 and hypertension? What role does triglycerides play in this analysis?
+```{r, eval = TRUE, echo = TRUE}
+# logistic regression analysis for the association between rs174548 and hypertension
+# adjusting for triglycerides
+glm.mod3 <- glm(HTN ~ TG+factor(rs174548), family = "binomial")
+summary(glm.mod3)
+exp(glm.mod3$coef)
+exp(confint(glm.mod3))
+
+lrtest(glm.mod2,glm.mod3)
+```
+
+16\.	Use a GLM to estimate the relative risk of hypertension for patients with different rs174548 genotypes, adjusting for triglyceries. Make sure you can interpret the coefficients. How do these results compare to the results of the logistic regression analysis?
+```{r, eval = TRUE, echo = TRUE}
+# relative risk regression for the association between rs174548 and hypertension
+# adjusting for triglycerides
+glm.mod4 <- gee(HTN ~ TG+factor(rs174548), family = "poisson", id = seq(1,nrow(cholesterol)))
+summary(glm.mod4)
+exp(glm.mod4$coef)
+p <- 2*(1-pnorm(abs(glm.mod4$coef)/sqrt(diag(glm.mod4$robust.variance))))
+p
+```
+
+17\.	Use a GLM to estimate the risk difference for hypertension according to rs174548 genotypes, adjusting for triglyceries. Make sure you can interpret the coefficients. How do these results compare to the results of the logistic regression and relative risk regression analyses?
+```{r, eval = TRUE, echo = TRUE}
+# risk difference regression for the association between rs174548 and hypertension
+# adjusting for triglycerides
+glm.mod5 <- gee(HTN ~ TG+factor(rs174548), id = seq(1,nrow(cholesterol)))
+summary(glm.mod5)
+p <- 2*(1-pnorm(abs(glm.mod5$coef)/sqrt(diag(glm.mod5$robust.variance))))
+p
+```
